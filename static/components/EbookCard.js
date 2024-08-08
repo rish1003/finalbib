@@ -9,7 +9,7 @@ const EbookCard = {
   },
   methods: {
     handleClick() {
-      // Emit a custom event with the book ID
+      
       this.$emit('click', this.id);
     }
   },

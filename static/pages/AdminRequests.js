@@ -82,7 +82,8 @@ const AdminRequests = {
     this.fetchBorrowedBooks();
   },
   template: `
-    <div>
+  <body>
+    <div >
       <Navbar/>
       <div class="bookscontainer">
         <center>
@@ -164,6 +165,7 @@ const AdminRequests = {
         </div>
       </div>
     </div>
+    </body>
   `,
 };
 

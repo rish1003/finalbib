@@ -4,7 +4,8 @@ import Navbar from "../components/Navbar.js";
 
 const EbookDetails = {
   props: {
-    id: String
+    id: String,
+    
   },
   data() {
     return {
@@ -130,7 +131,7 @@ const EbookDetails = {
       console.log(this.bookUrl);
       const bookUrl =  this.bookUrl || 'default_book.pdf'; 
       window.open(`static/media/uploads/books/${bookUrl}`, '_blank');
-      //this.openPdfReader(bookUrl);
+      
     },
     
     handleRequestBook() {

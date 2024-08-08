@@ -2,10 +2,10 @@ import Navbar from "../components/Navbar.js";
 
 const LoginRegister = {
   template: `
-    <div container>
+    <div>
     <Navbar />
     
-    <div class="wrapper row">
+    <div class="wrapper row" style="background-color:white;">
     
         <div class="col-md-12">
         <center> <div class="text-danger">{{error}}</div> </center>

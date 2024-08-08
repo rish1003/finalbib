@@ -4,6 +4,7 @@ const AdminManagement = {
   data() {
     return {
       sections: [],
+      isLoading: true,
       ebooks: [],
       newSection: { name: "", description: "" },
       newEbook: {
@@ -18,14 +19,16 @@ const AdminManagement = {
         cover_image: null,
         file: null,
       },
-      editSection: null,
+      editSection: {
+        name: null
+      },
       editEbook: null,
       error: null,
       searchQuerySections: "", // Search query for sections
       searchQueryEbooks: "", // Search query for eBooks
       filterSection: "", // Filter for eBooks by section
       filterBy: "all", // Filter for eBooks
-      sortBySections: "name", // Sort by sections
+      sortBySections: "custom", // Sort by sections
       sortByEbooks: "name", // Sort by eBooks
       currentPageSections: 1,
       currentPageEbooks: 1,
@@ -52,12 +55,16 @@ const AdminManagement = {
     async fetchEbooks() {
       try {
         const response = await fetch("/api/ebooks");
-        this.ebooks = await response.json();
+        const ebooks = await response.json();
+        console.log("Fetched eBooks:", ebooks); // Check fetched eBooks
+        this.ebooks = ebooks;
+        this.isLoading = false;
       } catch (error) {
         console.error("Error fetching eBooks:", error);
         this.error = "Failed to load eBooks. Please try again later.";
       }
-    },
+    }
+    ,
     async createSection() {
       try {
         const response = await fetch("/api/sections", {
@@ -65,11 +72,11 @@ const AdminManagement = {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify(this.newSection),
+          body: JSON.stringify(this.editSection),
         });
         const newSectionId = await response.json();
-        this.sections.push({ ...this.newSection, id: newSectionId });
-        this.newSection = { name: "", description: "" };
+        this.sections.push({ ...this.editSection, id: editSectionId });
+        this.editSection = { name: ""};
         this.dialogSection = false;
         window.location.reload();
       } catch (error) {
@@ -86,7 +93,7 @@ const AdminManagement = {
           },
           body: JSON.stringify(this.editSection),
         });
-        this.editSection = null;
+        this.editSection = { name: ""};;
         this.dialogSection = false;
         window.location.reload();
       } catch (error) {
@@ -100,7 +107,7 @@ const AdminManagement = {
           method: "DELETE",
         });
         this.sections = this.sections.filter(section => section.id !== sectionId);
-        window.location.reload();
+       
       } catch (error) {
         console.error("Error deleting section:", error);
         this.error = "Failed to delete section. Please try again later.";
@@ -111,7 +118,7 @@ const AdminManagement = {
         const formData = new FormData();
         Object.keys(this.newEbook).forEach(key => {
           if (key === "sections") {
-            this.newEbook.sections.forEach(sectionId => {
+            this.editEbook.sections.forEach(sectionId => {
               formData.append("sections", sectionId);
             });
           } else {
@@ -122,27 +129,30 @@ const AdminManagement = {
           method: "POST",
           body: formData,
         });
-        const newEbookId = await response.json();
-        this.ebooks.push({ ...this.newEbook, id: newEbookId });
-        this.newEbook = {
-          id: "",
-          name: "",
-          subname: "",
-          summary: "",
-          content: "",
-          author: "",
-          num_pages: 0,
-          sections: [],
-          file: null,
-          cover_image: null,
-        };
-        this.dialogEbook = false;
-        window.location.reload();
+        if (response.ok) {
+          await this.fetchEbooks(); // Refresh eBooks list
+          this.editEbook = {
+            id: "",
+            name: "",
+            subname: "",
+            summary: "",
+            content: "",
+            author: "",
+            num_pages: 0,
+            sections: [],
+            file: null,
+            cover_image: null,
+          };
+          this.dialogEbook = false;
+        } else {
+          this.error = "Failed to create eBook. Please try again later.";
+        }
       } catch (error) {
         console.error("Error creating eBook:", error);
         this.error = "Failed to create eBook. Please try again later.";
       }
-    },
+    }
+    ,
     async updateEbook() {
       try {
         const formData = new FormData();
@@ -160,7 +170,18 @@ const AdminManagement = {
           body: formData,
         });
         
-        this.editEbook = null;
+        this.editEbook = {
+          id: "",
+          name: "",
+          subname: "",
+          summary: "",
+          content: "",
+          author: "",
+          num_pages: 0,
+          sections: [],
+          file: null,
+          cover_image: null,
+        };
         this.dialogEbook = false;
         window.location.reload();
       } catch (error) {
@@ -174,7 +195,7 @@ const AdminManagement = {
           method: "DELETE",
         });
         this.ebooks = this.ebooks.filter(ebook => ebook.id !== ebookId);
-        window.location.reload();
+       
       } catch (error) {
         console.error("Error deleting eBook:", error);
         this.error = "Failed to delete eBook. Please try again later.";
@@ -210,16 +231,30 @@ const AdminManagement = {
       this.editEbook[field] = event.target.files[0];
     },
     sortSections() {
-      this.sections.sort((a, b) => {
-        const comparison = a[this.sortBySections].localeCompare(b[this.sortBySections]);
-        return this.sortBySections === "name" ? comparison : -comparison;
-      });
+      if (this.sortBySections === "name" || this.sortBySections === "name-x") {
+        const isAscending = this.sortBySections === "name";
+        this.sections.sort((a, b) => {
+          const comparison = a.name.localeCompare(b.name);
+          return isAscending ? comparison : -comparison;
+        });
+      }
+      else{
+        this.fetchSections();
+      }
+
     },
+    
     sortEbooks() {
       this.ebooks.sort((a, b) => {
         const comparison = a[this.sortByEbooks].localeCompare(b[this.sortByEbooks]);
         return this.sortByEbooks === "name" ? comparison : -comparison;
       });
+    },
+    readBook(url) {
+      console.log(url);
+      const bookUrl =  url || 'default_book.pdf'; 
+      window.open(`static/media/uploads/books/${bookUrl}`, '_blank');
+      
     },
   },
   computed: {
@@ -253,6 +288,7 @@ const AdminManagement = {
     totalPagesEbooks() {
       return Math.ceil(this.filteredEbooks.length / this.itemsPerPage);
     },
+    
   },
   watch: {
     searchQuerySections() {
@@ -283,11 +319,12 @@ const AdminManagement = {
         <h2>Section Management</h2>
          <button @click="openDialogSection(false)">Create Section</button>
         <div class="search-bar">
-        <input v-model="searchQuerySections" placeholder="Search Sections..." />
-         <select v-model="sortBySections" @change="sortSections">
-          <option value="name">Sort by Name</option>
-         
-        </select> </div>
+         <input v-model="searchQuerySections" placeholder="Search Sections..." />
+    <select v-model="sortBySections" @change="sortSections">
+      <option value="custom" selected>Custom Order</option>
+      <option value="name">Sort by Name (A-Z)</option>
+      <option value="name-x">Sort by Name (Z-A)</option>
+    </select>
        
        
         <table class="books-table">
@@ -332,14 +369,27 @@ const AdminManagement = {
           <option value="author">Sort by Author</option>
         </select></div>
        
-        
-        <table class="books-table">
+         <center>
+            <div v-if="isLoading" class="loading" style="--clr: brown;">
+            <br/>
+                <div class="spinner">
+                    <div></div>
+                    <div></div>
+                    <div></div>
+                    <div></div>
+                    <div></div>
+                    <div></div>
+                </div>
+            </div>
+        </center>
+        <table  v-if="!isLoading" class="books-table">
           <thead>
             <tr>
               <th>Name</th>
               <th>Author</th>
               <th>Number of Pages</th>
               <th>Cover</th>
+              <th>Book File</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -352,6 +402,7 @@ const AdminManagement = {
               <td>{{ ebook.author }}</td>
               <td>{{ ebook.num_pages }}</td>
               <td><img :src="ebook.url" alt="Cover" width="50" /></td>
+              <td> <a @click="readBook(ebook.bookurl)" style="text-decoration: underline;"> Read </a>  </td>
               <td>
                 <button @click="openDialogEbook(true, ebook)">Edit</button>
                 <button @click="deleteEbook(ebook.id)">Delete</button>
@@ -392,8 +443,8 @@ const AdminManagement = {
         <label>Summary:
           <textarea v-model="editEbook.summary"></textarea>
         </label>
-        <label>Content:
-          <textarea v-model="editEbook.content"></textarea>
+        <label hidden>Content:
+          <textarea v-model="editEbook.content" hidden value=""></textarea>
         </label>
         <label>Author:
           <input v-model="editEbook.author" />
@@ -402,7 +453,7 @@ const AdminManagement = {
           <input type="number" v-model="editEbook.num_pages" />
         </label>
         <label>Sections:
-          <select v-model="editEbook.sections" multiple>
+          <select v-model="editEbook.sections" multiple style="background-color: white;">
             <option v-for="section in sections" :value="section.id" :key="section.id">{{ section.name }}</option>
           </select>
         </label>
@@ -418,6 +469,7 @@ const AdminManagement = {
         <button @click="dialogEbook = false">Cancel</button>
         <p v-if="error" class="error">{{ error }}</p>
       </div>
+    </div>
     </div>
   `,
 };

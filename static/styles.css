@@ -166,8 +166,8 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 85vh;
-  background-color: var(--bg-light);
+  height: 90vh;
+  background-color: white;
   background-size: cover;
 }
 
@@ -198,7 +198,7 @@ body {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  padding: 20px;
+
   border: 2px solid var(--vintage-lighter);
   border-radius: 15px;
   box-shadow: 4px 4px var(--vintage-lighter);

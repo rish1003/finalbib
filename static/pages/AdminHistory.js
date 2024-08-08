@@ -109,10 +109,10 @@ const AdminHistory = {
           <!-- Search, Filter, and Sort Controls -->
           <div class="search-bar" style="padding:20px;">
             <input v-model="searchQuery" placeholder="Search by name or eBook title" @input="handleSearch" />
-            <select v-model="filterBy" @change="handleFilterChange">
-              <option value="all">All</option>
-              <option value="user">By User</option>
-              <option value="ebook">By eBook</option>
+            <select v-model="filterBy" @change="handleFilterChange" hidden>
+              <option value="all" hidden>All</option>
+              <option value="user" hidden>By User</option>
+              <option value="ebook" hidden>By eBook</option>
             </select>
             <select v-model="filterBy" @change="handleSortChange">
               <option value="all" hidden>Sort</option>

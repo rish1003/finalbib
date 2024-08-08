@@ -807,6 +807,7 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
             filename2 = secure_filename(file2.filename)
             file2.save(os.path.join(app.config['UPLOAD_FOLDER'], filename2))
             photo_url = os.path.join(filename2)
+            print(photo_url)
         else:
             photo_url = None
 
@@ -818,13 +819,13 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
             content=data['content'],
             author=data['author'],
             num_pages=data['num_pages'],
-            url=photo_url,
+            url='/static/media/uploads/'+photo_url,
             bookurl=book_url
         )
         db.session.add(new_ebook)
         db.session.commit()
 
-        # Add to sections
+
         section_ids = data.getlist('sections')
         for section_id in section_ids:
             ebook_section = EbookSection(ebook_id=new_ebook.id, section_id=section_id)
@@ -837,19 +838,26 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
     def update_ebook(id):
         data = request.form
         file = request.files.get('file')
+        file2 = request.files.get('cover_image')
         ebook = Ebook.query.get_or_404(id)
+
         if file:
             filename = secure_filename(file.filename)
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            ebook.bookurl = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], "books/"+filename))
+            book_url = os.path.join("books", filename)
+            ebook.bookurl = book_url
+        if file2:
+            filename2 = secure_filename(file2.filename)
+            file2.save(os.path.join(app.config['UPLOAD_FOLDER'], filename2))
+            photo_url = os.path.join(filename2)
+            ebook.url = photo_url
 
         ebook.name = data['name']
-        ebook.subname = data.get('subname')
+        ebook.subname = data.get('subname', ebook.subname)
         ebook.summary = data['summary']
         ebook.content = data['content']
         ebook.author = data['author']
         ebook.num_pages = data['num_pages']
-        ebook.url = data.get('url', ebook.url)
 
         # Update sections
         EbookSection.query.filter_by(ebook_id=id).delete()
@@ -859,7 +867,7 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
             db.session.add(ebook_section)
 
         db.session.commit()
-        return jsonify(ebook.id)
+        return jsonify(ebook.id), 200
 
     @app.route('/api/ebooks/<string:id>', methods=['DELETE'])
     def delete_ebook(id):
@@ -872,7 +880,9 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
     def get_ebooks():
         ebooks = Ebook.query.all()
         
-        
+        for ebook in ebooks:
+            for section in ebook.ebook_sections:
+                print(section.section_id)
         return jsonify([
             {
                 'id': ebook.id,
@@ -884,7 +894,7 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
                 'num_pages': ebook.num_pages,
                 'url': ebook.url,
                 'bookurl': ebook.bookurl,
-                'sections': [section.id for section in ebook.ebook_sections]
+                'sections': [section.section_id for section in ebook.ebook_sections]
             }
             for ebook in ebooks
         ])
