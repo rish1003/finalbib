@@ -20,6 +20,7 @@ class User(db.Model, UserMixin):
     fs_uniquifier = db.Column(db.String(64), nullable=False)
     roles = db.relationship('Role', secondary='user_roles', backref=db.backref('users', lazy='dynamic'))
     created = db.Column(db.DateTime, default=lambda: datetime.now(pytz.timezone('Asia/Kolkata')))
+    last_login = db.Column(db.DateTime, default=lambda: datetime.now(pytz.timezone('Asia/Kolkata')))
 
 class Role(db.Model, RoleMixin):
     id = db.Column(db.Integer, primary_key=True)
@@ -48,11 +49,11 @@ class Ebook(db.Model):
     id = db.Column(db.String(13), primary_key=True) 
     name = db.Column(db.String(120), nullable=False) 
     subname = db.Column(db.String(120), nullable=True) 
-    summary = db.Column(db.Text, nullable=False)  # Description
-    content = db.Column(db.Text, nullable=False)  # Content
-    author = db.Column(db.String(120), nullable=False)  # List of authors stored as a comma-separated string
-    num_pages = db.Column(db.Integer)  # Number of pages
-    url = db.Column(db.String(1000), nullable=True, default="/default.png")  # Thumbnail URL
+    summary = db.Column(db.Text, nullable=False)  
+    content = db.Column(db.Text, nullable=False)  
+    author = db.Column(db.String(120), nullable=False)  
+    num_pages = db.Column(db.Integer)  
+    url = db.Column(db.String(1000), nullable=True, default="/default.png")  
     bookurl =db.Column(db.String(1000), nullable=True) 
 
 class Section(db.Model):

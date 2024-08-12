@@ -1,4 +1,4 @@
-import EbookCard from '../components/EbookCard.js'; // Import your EbookCard component
+import EbookCard from '../components/EbookCard.js'; 
 import Navbar from '../components/Navbar.js';
 import HeartIcon from '../components/HeartIcon.js';
 const ReaderFeed = {
@@ -10,29 +10,29 @@ const ReaderFeed = {
           id: 1,
           user: 'Alice',
           content: 'Just finished reading "The Great Gatsby"',
-          imageUrl: 'static/media/build.jpeg', // Dummy image URL
+          imageUrl: 'static/media/build.jpeg',
           timestamp: Date.now() - 100000,
           likes: 12,
           comments: [
             { id: 1, user: 'Bob', content: 'One of my favorites!' },
             { id: 2, user: 'Charlie', content: 'I love that book!' }
           ],
-          showComments: false, // Track visibility of comments
-          newComment: '', // For adding new comments,
+          showComments: false, 
+          newComment: '', 
           likedUser: false
         },
-        // Add more posts here...
-      ], // Dummy posts data
+        
+      ], 
       showFriendRequestsDialog: false,
       
       friendRequests: [
         { id: 1, name: 'David', message: 'Wants to connect with you' },
         { id: 2, name: 'Eva', message: 'Sent you a friend request' }
-      ], // Dummy friend requests data
+      ],
       messages: [
         { id: 1, from: 'Grace', content: 'Hey! Have you read the latest book I recommended?' },
         { id: 2, from: 'Hank', content: 'Looking forward to our next book club meeting!' }
-      ], // Dummy messages data
+      ], 
       conversations: {
         1: [
           { from: 'Grace', content: 'Hey! Have you read the latest book I recommended?' },
@@ -45,8 +45,8 @@ const ReaderFeed = {
       newPostContent: '',
       newPostImage: null,
       visibleBooks: [],
-      startIndex: 0, // Index of the first visible book
-      pageSize: 5, // Number of books to show at a time
+      startIndex: 0, 
+      pageSize: 5,
       showFriendsListDialog: false,
       showFriends: false,
       showMessagesDialog: false,
@@ -67,7 +67,7 @@ const ReaderFeed = {
       const viewedBookIds = JSON.parse(localStorage.getItem('viewedBooks')) || [];
       
       if (viewedBookIds.length === 0) {
-        return; // No books to fetch
+        return; 
       }
 
       fetch('/api/books', {
@@ -129,12 +129,12 @@ const ReaderFeed = {
     viewConversation(id) {
       this.selectedConversation = this.conversations[id] || [];
       this.showConversationDialog=true;
-      this.showMessagesDialog = false; // Close the message list dialog
+      this.showMessagesDialog = false; 
     },
     sendMessage() {
       if (this.newMessage.trim()) {
         this.selectedConversation.push({ from: 'You', content: this.newMessage });
-        this.newMessage = ''; // Clear the message input
+        this.newMessage = ''; 
       }},
     showFriendsList() {
       this.showFriendsListDialog = true;
@@ -156,7 +156,7 @@ const ReaderFeed = {
       const post = this.posts.find(p => p.id === postId);
       if (post) {
         post.comments.push({ id: post.comments.length + 1, user: 'You', content: comment });
-        post.newComment = ''; // Clear the comment input after adding
+        post.newComment = ''; 
       }
     },
     createPost() {
@@ -202,7 +202,7 @@ const ReaderFeed = {
       <Navbar/>
       
       <div class="container">
-      <!-- Main Content -->
+     
         <div class="intro-section">
           <div class="intro-content">
             <h1 class="dashboard-title"><b>Reader Feed</b></h1>
@@ -247,7 +247,7 @@ const ReaderFeed = {
         </div>
       </div>
 
-             <!-- Conversation Dialog -->
+            
         <div v-if="selectedConversation.length > 0" class="dialog-box">
           <button class="close-btn" @click="closeConversation">X</button>
           <h4>Conversation</h4>
@@ -274,7 +274,7 @@ const ReaderFeed = {
           </div>
      
       </div>
-        <!-- Post Creation Section -->
+        
         <div class="post-creation">
         <div class="submit-review">
           <textarea v-model="newPostContent" placeholder="What's on your mind?"></textarea>
@@ -283,7 +283,7 @@ const ReaderFeed = {
         </div>
         </div>
 
-        <!-- Continue Browsing Section -->
+      
         <div v-if="recentlyViewedBooks.length" class="continue-browsing">
           <h3 class="section-title">Continue Browsing</h3>
           <div class="scroll-container">
@@ -304,7 +304,6 @@ const ReaderFeed = {
           </div>
         </div>
 
-        <!-- Posts Section -->
         <div class="posts-feed">
           <h3 class="section-title">Latest Posts</h3>
               <div v-for="post in posts" :key="post.id" class="post">

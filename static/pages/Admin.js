@@ -5,6 +5,7 @@ const Admin = {
   data() {
     return {
       chart: null,
+      token: localStorage.getItem('token'),
       activeUsers: 0,
       grantRequests: 0,
       totalBooks: 0,
@@ -33,7 +34,12 @@ const Admin = {
   },
   methods: {
     fetchStatistics() {
-      fetch(`/api/admin/stats?period=${this.selectedPeriod}&year=${this.selectedYear}`)
+      console.log(this.token);
+      fetch(`/api/admin/stats?period=${this.selectedPeriod}&year=${this.selectedYear}`, {
+        headers: {
+          'Authentication-Token': this.token,
+        },
+      })
         .then(response => response.json())
         .then(data => {
           this.activeUsers = data.activeUsers;
@@ -119,14 +125,37 @@ const Admin = {
       const ctx = document.getElementById('totalBooksChart').getContext('2d');
       new Chart(ctx, {
         type: 'bar',
-        data: data,
+        data: {
+          labels: ['Bought','Borrowed'], 
+          datasets: [{
+            label: 'Books',
+            data: data.datasets[0].data, 
+            backgroundColor: data.datasets[0].backgroundColor, 
+            borderColor: data.datasets[0].borderColor, // Border colors
+            borderWidth: data.datasets[0].borderWidth // Border width
+          }]
+        },
         options: {
           responsive: true,
+          plugins: {
+            legend: {
+              display: false, 
+              position: 'top' 
+            },
+            tooltip: {
+              callbacks: {
+                label: function(tooltipItem) {
+                  return tooltipItem.raw;
+                }
+              }
+            }
+          },
           scales: {
             x: {
+              beginAtZero: true,
               ticks: {
                 callback: function(value) {
-                  return Number.isInteger(value) ? value : ''; 
+                  return data.labels[value]; 
                 }
               }
             },
@@ -134,25 +163,49 @@ const Admin = {
               beginAtZero: true,
               ticks: {
                 callback: function(value) {
-                  return Number.isInteger(value) ? value : '';  
+                  return Number.isInteger(value) ? value : ''; 
                 }
               }
-            }}
+            }
+          }
         }
       });
     },
     renderPopularSectionsChart(data) {
       const ctx = document.getElementById('popularSectionsChart').getContext('2d');
       new Chart(ctx, {
-        type: 'bar',
-        data: data,
+        type: 'bar', 
+        data: {
+          labels: data.labels, 
+          datasets: [{
+            label: 'Top Sections',
+            data: data.datasets[0].data, 
+            backgroundColor: data.datasets[0].backgroundColor, 
+            borderColor: data.datasets[0].borderColor, 
+            borderWidth: data.datasets[0].borderWidth 
+          }]
+        },
         options: {
           responsive: true,
+          plugins: {
+            legend: {
+              display: false, 
+              position: 'top' 
+            },
+            tooltip: {
+              callbacks: {
+                label: function(tooltipItem) {
+                  return tooltipItem.raw; 
+                }
+              }
+            }
+          },
           scales: {
             x: {
+              beginAtZero: true,
               ticks: {
                 callback: function(value) {
-                  return Number.isInteger(value) ? value : ''; 
+                  return data.labels[value]; 
                 }
               }
             },
@@ -160,7 +213,7 @@ const Admin = {
               beginAtZero: true,
               ticks: {
                 callback: function(value) {
-                  return Number.isInteger(value) ? value : '';  
+                  return Number.isInteger(value) ? value : ''; 
                 }
               }
             }
@@ -173,6 +226,7 @@ const Admin = {
     }
   },
   mounted() {
+
     this.fetchStatistics();
     this.fetchEbookIssues();
     this.fetchTotalBooksChart();
@@ -244,7 +298,7 @@ const Admin = {
             </div>
           </div>
         </div>
-        <div class="stats-container" @click="navigateTo('management')">
+        <div class="stats-container">
           <div class="stat-card elongated">
             <h2>E-books Issued</h2>
             <div>

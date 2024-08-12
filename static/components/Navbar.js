@@ -97,6 +97,22 @@ const Navbar = {
       this.isLoggedIn = false;
       this.isReader = false;
       this.isAdmin = false;
+    fetch('/clear_cache', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        if (response.ok) {
+            console.log('Cache cleared successfully');
+        } else {
+            console.error('Failed to clear cache');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+    });
     }
   }
 };

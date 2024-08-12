@@ -1,8 +1,9 @@
+from multiprocessing.pool import AsyncResult
 from operator import and_
 import os
 import random
 from flask import jsonify, render_template, render_template_string, request
-from flask_security import auth_required, current_user, roles_required,SQLAlchemyUserDatastore
+from flask_security import auth_required, current_user, roles_required,SQLAlchemyUserDatastore,auth_token_required
 from flask_security.utils import verify_password,hash_password
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timedelta
@@ -10,11 +11,56 @@ import pytz
 from application.models import Ebook, EbookIssued, EbookSection, Review, Role, Section, User, UserRoles
 from flask import Flask, send_from_directory, abort
 from werkzeug.utils import secure_filename
-def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
+from flask_caching import Cache
+from application.tasks import export_ebooks_to_csv, send_monthly_report, remind_return_due
+def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy,cache):
+   
+    @app.route('/celerydemo')
+    def celery_demo():
+        task = remind_return_due.delay()
+        return jsonify({'task_id':task.id})
+    
+    @app.route('/export_csv', methods=['POST'])
+    
+    def export_csv():
+        task = export_ebooks_to_csv.apply_async()
+        return jsonify({'task_id': task.id, 'status': 'Task started'}), 202
+    
+        
+    @app.route('/export_status/<task_id>')
+    def export_status(task_id):
+        task = export_ebooks_to_csv.AsyncResult(task_id)
+        if task.state == 'PENDING':
+            response = {
+                'state': task.state,
+                'status': 'Processing...'
+            }
+        elif task.state != 'FAILURE':
+            response = {
+                'state': task.state,
+                'status': task.info.get('status', ''),
+                'download_url': task.info.get('download_url', '')  
+            }
+        else:
+            response = {
+                'state': task.state,
+                'status': str(task.info),  
+            }
+        return jsonify(response)
+           
     @app.route("/")
     def home():
         return render_template("index.html")
+    
+    @app.route('/clear_cache', methods=['POST'])
+    def clear_cache():
+        cache.clear()
+        print("cleared")
+        return jsonify({'status': 'Cache cleared'}), 200
+    
     @app.route('/fetch/books', methods=['GET'])
+    @roles_required('Reader')
+    @cache.cached(timeout=60*5, key_prefix='all_books')
     def get_books():
         sections = Section.query.all()
         data = {}
@@ -50,7 +96,10 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
             return jsonify({'message' : 'invalid user'}), 404
         
         if verify_password(password, user.password):
-            print(user.roles)
+            user1 = User.query.filter_by(email=email).first()
+            user1.last_login = datetime.now(pytz.timezone('Asia/Kolkata'))
+            print(user1,user1.last_login)
+            db.session.commit()
             roles = [role.name for role in user.roles]
             print(roles)
             return jsonify({'token' : user.get_auth_token(), 'roles' : roles, 'id' : user.id, 'email' : user.email }), 200
@@ -59,22 +108,7 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
             
             return jsonify({'message' : 'Incorrect Credentials'}), 400
         
-    @app.route("/profile")
-    @auth_required("session","token")
-    def profile():
-        return render_template_string("""
-                                      <h1> THIS IS PROFILE </h1>
-                                      <p> Welcome, {{current_user.user}}
-                                      <a href = "/logout">out</a>
-                                      """)
-    @app.route("/libdash")
-    @roles_required("Admin")
-    def lib_dashboard():
-        return render_template_string(
-        """
-        <h1> Instructor</h1>
-        """
-        )
+    
     @app.route('/userregis', methods=['POST'])
     def user_registration():
         data = request.get_json()
@@ -87,13 +121,22 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
                 email=email, password=hashed_password, roles=["Reader"], user=user)
             db.session.commit()
             user1 = user_datastore.find_user(email = email)
+            cache.delete("users_list")
 
             return jsonify({'token' : user1.get_auth_token(), 'roles' : "Reader", 'id' : user1.id, 'email' : user1.email }), 200
         else:
             return jsonify({"message": "Email already registered"}), 400
        
-    
+    @app.route('/api/check_token_and_login', methods=['GET'])
+    @auth_required('token')  
+    def check_token_and_login():
+        if current_user.is_authenticated:
+            roles = [role.name for role in current_user.roles]
+            return jsonify({'is_logged_in': True, 'roles': roles, 'id': current_user.id, 'email': current_user.email}), 200
+        else:
+            return jsonify({'is_logged_in': False}), 401
     @app.route('/fetch/ebook/<string:ebook_id>', methods=['GET'])
+  
     def get_ebook_details(ebook_id):
         user_id = request.args.get('user_id')  
         ebook = Ebook.query.filter_by(id=ebook_id).first()
@@ -133,7 +176,34 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
         }
         return jsonify(ebook_details)
     
+    @app.route('/complete_payment', methods=['POST'])
+    def complete_payment():
+        try:
+            data = request.json
+            ebook_id = data.get('ebook_id')
+            user_id = data.get('user_id')
+
+            
+            if not ebook_id or not user_id:
+                return jsonify({'success': False, 'message': 'Invalid input'}), 400
+
+            ebook = Ebook.query.get(ebook_id)
+            if not ebook:
+                return jsonify({'success': False, 'message': 'Ebook not found'}), 404
+
+            ebook = EbookIssued(issued_to = user_id, issued_ebook = ebook_id, returned=False,bought=True,status=False)
+            db.session.add(ebook)
+            db.session.commit()
+
+
+            return jsonify({'success': True, 'message': 'Payment completed successfully'})
+
+        except Exception as e:
+            print(f"Error completing payment: {e}")
+            return jsonify({'success': False, 'message': 'An error occurred'}), 500
+    
     @app.route('/return_book', methods=['POST'])
+    @roles_required('Reader')
     def return_book():
         data = request.json
         ebook_id = data.get('ebook_id')
@@ -154,6 +224,7 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
         return jsonify({'success': True, 'message': 'Book returned successfully'})
 
     @app.route('/request_borrow', methods=['POST'])
+    @roles_required('Reader')
     def request_borrow():
         data = request.json
         ebook_id = data.get('ebook_id')
@@ -167,18 +238,18 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
         if existing_issue:
             return jsonify({'error': 'You have already requested to borrow this eBook or it is already issued to you.'}), 400
 
-        # Create a new issue record
         new_issue = EbookIssued(
             issued_ebook=ebook_id,
             issued_to=user_id,
         )
-
+        cache.delete("ebooks_history")
         db.session.add(new_issue)
         db.session.commit()
 
         return jsonify({'success': 'Request to borrow the eBook has been sent.'})
     
     @app.route('/issue_ebook', methods=['POST'])
+    
     def issue_ebook():
         ebook_id = '9780744001402'
         user_id = '2'
@@ -186,7 +257,7 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
         if not ebook_id or not user_id:
             return jsonify({'error': 'Ebook ID and User ID are required'}), 400
 
-        # Check if the ebook and user exist
+     
         ebook = Ebook.query.get(ebook_id)
         user = User.query.get(user_id)
 
@@ -215,14 +286,12 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
         ebook = Ebook.query.get(ebook_id)
         if not ebook:
             return jsonify({'error': 'eBook not found'}), 404
-        
-        # Fetch reviews for the book
+       
         reviews = Review.query.filter_by(ebook_id=ebook_id).all()
         
         if not reviews:
             return jsonify({'reviews': [], 'average_rating': 0, 'rating_breakdown': {}}), 200
         
-        # Calculate average rating and rating breakdown
         total_rating = sum(review.rating for review in reviews)
         average_rating = total_rating / len(reviews)
         
@@ -244,7 +313,7 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
         }), 200
 
     @app.route('/submit/review', methods=['POST'])
-
+    @roles_required('Reader')
     def submit_review():
         data = request.get_json()
         user_id = data.get('user_id')
@@ -253,7 +322,7 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
         comment = data.get('comment')
 
         if not user_id or not ebook_id or not rating:
-            return jsonify({'error': 'Invalid data'}), 400
+            return jsonify({'error': 'Cannot Submit Review'}), 400
 
         existing_review = Review.query.filter_by(user_id=user_id, ebook_id=ebook_id).first()
 
@@ -325,26 +394,27 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
     @app.route('/download/<filename>')
     def download_file(filename):
         try:
-            # Assuming your PDFs are stored in 'static/pdfs' directory
+          
             return send_from_directory('static/media/uploads/books/', filename)
         except FileNotFoundError:
             abort(404)
             
     @app.route('/profile/<int:user_id>', methods=['GET'])
+    @roles_required('Reader')
+    
+    @cache.cached(timeout=300, key_prefix='profile_data_')
     def get_profile(user_id):
+       
         user = User.query.get_or_404(user_id)
         
-        # Get borrowed books
         borrowed_books = EbookIssued.query.filter_by(issued_to=user_id).order_by(EbookIssued.date_issued.desc()).all()
         
-        # Calculate statistics
         stats = {
             'bought': sum(1 for book in borrowed_books if book.bought),
             'borrowed': sum(1 for book in borrowed_books if not book.bought),
             'monthlyData': []
         }
 
-        # Generate monthly statistics for the past 6 months
         now = datetime.now(pytz.timezone('Asia/Kolkata'))
         for i in range(6):
             month_start = now.replace(day=1, month=now.month - i, year=now.year)
@@ -363,12 +433,14 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
             'active': user.active,
             'roles': [role.name for role in user.roles]
         }
+        
+        
 
         return jsonify({
             'user': user_data,
             'borrowed_books': [{
                 'ebook_id': book.issued_ebook,
-                'ebook_name': book.ebook.name,  # Replace with actual book title retrieval
+                'ebook_name': book.ebook.name, 
                 'date_issued': book.date_issued.strftime('%Y-%m-%d'),
                 'return_date': book.return_date.strftime('%Y-%m-%d') if book.return_date else 'N/A',
                 'bought': book.bought
@@ -377,6 +449,8 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
         })
 
     @app.route('/profile/update', methods=['POST'])
+    @roles_required('Reader')
+    
     def update_user_profile():
         data = request.json
         user_id = data.get('id')
@@ -400,24 +474,24 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
 
         if 'password' in data:
             user.password = hash_password(data['password'])
-
+        cache.delete(f'profile_data_')
         db.session.commit()
         return jsonify({'success': 'Profile updated successfully'})
         
     @app.route('/api/books', methods=['POST'])
     def get_books_by_ids():
         try:
-            # Get the list of IDs from the request body
+           
             request_data = request.get_json()
             ids = request_data.get('ids', [])
             
             if not ids:
                 return jsonify({"error": "No book IDs provided"}), 400
             
-            # Fetch books from the database by IDs
+            
             books = Ebook.query.filter(Ebook.id.in_(ids)).all()
             
-            # Prepare the response data
+         
             books_data = [
                 {
                     "id": book.id,
@@ -433,15 +507,16 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
         
         except Exception as e:
             return jsonify({"error": str(e)}), 500
-            
+    
     @app.route('/api/admin/stats', methods=['GET'])
+    @auth_required("token")
+    @roles_required('Admin')
     def get_statistics():
         current_year = request.args.get('year', default=2024, type=int)
-        period = request.args.get('period', default='week', type=str)  # 'week', 'month', 'year'
+        period = request.args.get('period', default='week', type=str)  
 
         today = datetime.now()
         
-        # Determine start date for the current period
         if period == 'week':
             start_date = today - timedelta(days=7)
         elif period == 'month':
@@ -449,9 +524,7 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
         elif period == 'year':
             start_date = today - timedelta(days=365)
         else:
-            start_date = today - timedelta(days=30)  # Default to last month
-
-        # Determine start and end dates for the previous period
+            start_date = today - timedelta(days=30)  
         if period == 'week':
             previous_start_date = start_date - timedelta(days=7)
             previous_end_date = start_date - timedelta(days=1)
@@ -462,27 +535,24 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
             previous_start_date = start_date - timedelta(days=365)
             previous_end_date = start_date - timedelta(days=1)
         else:
-            previous_start_date = start_date - timedelta(days=30)  # Default to last month
+            previous_start_date = start_date - timedelta(days=30)  
             previous_end_date = start_date - timedelta(days=1)
 
-        # Fetch statistics
+      
         total_active_users = User.query.count()
         total_grant_requests = EbookIssued.query.filter_by(status=False,returned=False).count()
         total_books = Ebook.query.count()
         total_sections = Section.query.count()
 
-        # Fetch current period statistics
         current_active_users = User.query.filter(User.created.between(start_date, today)).count()
      
         current_grant_requests= EbookIssued.query.filter((EbookIssued.date_issued.between(start_date, today))).count()
        
 
-        # Fetch previous period statistics
         previous_active_users = User.query.filter(User.created.between(previous_start_date, previous_end_date)).count()
         previous_grant_requests= EbookIssued.query.filter((EbookIssued.date_issued.between(previous_start_date, previous_end_date))).count()
 
 
-        # Calculate growth
         user_growth = current_active_users - previous_active_users
         request_growth = current_grant_requests - previous_grant_requests
 
@@ -508,10 +578,10 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
         })
 
     @app.route('/api/admin/ebook-issues', methods=['GET'])
+  
     def get_ebook_issues():
         year = request.args.get('year', default=2024, type=int)
 
-        # Query to get the number of e-books issued per month
         results = (
             db.session.query(
                 db.func.strftime('%m', EbookIssued.date_issued).label('month'),
@@ -530,20 +600,19 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
             'labels': months,
             'datasets': [{
                 'label': 'E-books Issued',
-                'data': [0] * 12  # Initialize with 0
+                'data': [0] * 12  
             }]
         }
 
-        # Fill in the data
         for result in results:
             month_index = int(result.month) - 1
             data['datasets'][0]['data'][month_index] = result.count
         print(data)
 
         return jsonify(data)
+    
     @app.route('/api/admin/total-books', methods=['GET'])
     def get_total_books():
-        # Query to count bought and borrowed books
         bought_count = db.session.query(db.func.count(EbookIssued.id)).filter(EbookIssued.bought == True).scalar()
         borrowed_count = db.session.query(db.func.count(EbookIssued.id)).filter(EbookIssued.bought == False).scalar()
 
@@ -551,7 +620,6 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
             'labels': ['Bought', 'Borrowed'],
             'datasets': [{
                 'label': 'Total Books',
-                
                 'data': [bought_count, borrowed_count],
                 'backgroundColor': ['rgba(54, 162, 235, 0.2)', 'rgba(255, 99, 132, 0.2)'],
                 'borderColor': ['rgba(54, 162, 235, 1)', 'rgba(255, 99, 132, 1)'],
@@ -560,7 +628,11 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
         }
 
         return jsonify(data)
+
+
+        return jsonify(data)
     @app.route('/api/admin/popular-sections', methods=['GET'])
+  
     def fetch_popular_sections():
 
         section_counts = db.session.query(
@@ -574,7 +646,7 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
             Section.name
         ).order_by(
             db.func.count(EbookSection.section_id).desc()
-        ).limit(5).all()  # Top 5 sections
+        ).limit(5).all() 
 
         data = {
             'labels': [section for section, _ in section_counts],
@@ -590,6 +662,8 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
         return jsonify(data)
 
     @app.route('/api/users', methods=['GET'])
+    @roles_required('Admin')
+    @cache.cached(timeout=60*5, key_prefix='users_list', query_string=True)
     def get_users():
         search_query = request.args.get('search', '')
         sort_by = request.args.get('sort', 'name')
@@ -600,14 +674,11 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
         if not reader_role:
             return jsonify({'error': 'Reader role not found'}), 404
 
-        # Query for users with the 'reader' role
         query = db.session.query(User).join(UserRoles).filter(UserRoles.role_id == reader_role.id)
 
-        # Filter by search query
         if search_query:
             query = query.filter(User.fname.ilike(f'%{search_query}%'))
 
-        # Sorting
         if sort_by == 'created':
             query = query.order_by(User.created.desc())
         elif sort_by == 'username':
@@ -615,7 +686,6 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
         else:
             query = query.order_by(User.fname)
 
-        # Pagination
         users = query.paginate(page=page, per_page=per_page).items
 
         users_list = [{
@@ -629,6 +699,7 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
         return jsonify(users_list)
 
     @app.route('/api/users/<int:user_id>', methods=['DELETE'])
+    @roles_required('Admin')
     def delete_user(user_id):
         user = User.query.get_or_404(user_id)
         try:
@@ -639,8 +710,9 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
             db.session.rollback()
             return jsonify({'error': str(e)}), 500
     @app.route('/api/ebooks/requests', methods=['GET'])
+    @roles_required('Admin')
     def get_requested_books():
-        # Query for books with status=False and returned=False
+        
         requested_books = db.session.query(EbookIssued).filter_by(status=False, returned=False,bought=False).all()
         return jsonify([{
             'id': book.id,
@@ -650,6 +722,7 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
         } for book in requested_books])
 
     @app.route('/api/ebooks/requests/<int:book_id>', methods=['PUT'])
+    @roles_required('Admin')
     def approve_request(book_id):
         book_request = EbookIssued.query.get(book_id)
         if not book_request:
@@ -658,9 +731,11 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
         book_request.status = True
         book_request.issue_date = datetime.now(pytz.timezone('Asia/Kolkata'))
         db.session.commit()
+        cache.delete("ebooks_history")
         return jsonify({'message': 'Request approved'})
 
     @app.route('/api/ebooks/requests/<int:book_id>', methods=['DELETE'])
+    @roles_required('Admin')
     def deny_request(book_id):
         book_request = EbookIssued.query.get(book_id)
         if not book_request:
@@ -668,11 +743,13 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
         
         db.session.delete(book_request)
         db.session.commit()
+        cache.delete("ebooks_history")
         return jsonify({'message': 'Request denied'})
 
     @app.route('/api/ebooks/borrowed', methods=['GET'])
+    @roles_required('Admin')
     def get_borrowed_books():
-        # Query for books with status=True and returned=False
+       
         borrowed_books = db.session.query(EbookIssued).filter_by(status=True, returned=False).all()
         return jsonify([{
             'id': book.id,
@@ -682,6 +759,7 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
         } for book in borrowed_books])
 
     @app.route('/api/ebooks/borrowed/<int:book_id>', methods=['PUT'])
+    @roles_required('Admin')
     def revoke_borrow(book_id):
         book_borrow = EbookIssued.query.get(book_id)
         if not book_borrow:
@@ -690,9 +768,12 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
         book_borrow.status = False
         book_borrow.returned = True
         db.session.commit()
+        cache.delete("ebooks_history")
         return jsonify({'message': 'Borrow revoked'})
 
     @app.route('/api/ebooks/history', methods=['GET'])
+    @roles_required('Admin')
+    @cache.cached(timeout=300, key_prefix='ebooks_history')
     def get_history_records():
         try:
             page = int(request.args.get('page', 1))
@@ -743,31 +824,38 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
 
 
     @app.route('/api/sections', methods=['POST'])
+    @roles_required('Admin')
     def create_section():
         data = request.get_json()
         new_section = Section(name=data['name'])
         db.session.add(new_section)
         db.session.commit()
+        cache.delete("admin_sections")
         return jsonify(new_section.id), 201
 
     @app.route('/api/sections/<int:id>', methods=['PUT'])
+    @roles_required('Admin')
     def update_section(id):
         data = request.get_json()
         section = Section.query.get_or_404(id)
         section.name = data['name']
 
-
+        cache.delete("admin_sections")
         db.session.commit()
         return jsonify(section.id)
 
     @app.route('/api/sections/<int:id>', methods=['DELETE'])
+    @roles_required('Admin')
     def delete_section(id):
         section = Section.query.get_or_404(id)
         db.session.delete(section)
         db.session.commit()
+        cache.delete("admin_sections")
         return '', 204
 
     @app.route('/api/sections', methods=['GET'])
+    @roles_required('Admin')
+    @cache.cached(timeout=300, key_prefix='admin_sections')
     def get_sections():
         sections = Section.query.all()
         return jsonify([{'id': section.id, 'name': section.name, 'date_created': section.date_created} for section in sections])
@@ -775,7 +863,7 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
     def generate_unique_id(existing_ids):
         
         def generate_random_id():
-            return str(random.randint(1000000000, 9999999999))  # Generates a 10-digit number as a string
+            return str(random.randint(1000000000, 9999999999)) 
 
         unique_id = generate_random_id()
         while unique_id in existing_ids:
@@ -784,15 +872,16 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
         return unique_id
 
     @app.route('/api/ebooks', methods=['POST'])
+    @roles_required('Admin')
     def create_ebook():
         data = request.form
         file = request.files.get('file')
         file2 = request.files.get('cover_image')
         
-        # Get existing ebook IDs to ensure uniqueness
+      
         existing_ids = {ebook.id for ebook in Ebook.query.all()}
         
-        # Generate a unique 10-digit ID for the new ebook
+       
         new_ebook_id = generate_unique_id(existing_ids)
         
         if file:
@@ -831,10 +920,11 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
             ebook_section = EbookSection(ebook_id=new_ebook.id, section_id=section_id)
             db.session.add(ebook_section)
         db.session.commit()
-
+        cache.delete('admin_ebooks')
         return jsonify(new_ebook.id), 201
 
     @app.route('/api/ebooks/<string:id>', methods=['PUT'])
+    @roles_required('Admin')
     def update_ebook(id):
         data = request.form
         file = request.files.get('file')
@@ -859,24 +949,28 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
         ebook.author = data['author']
         ebook.num_pages = data['num_pages']
 
-        # Update sections
         EbookSection.query.filter_by(ebook_id=id).delete()
         section_ids = data.getlist('sections')
         for section_id in section_ids:
             ebook_section = EbookSection(ebook_id=ebook.id, section_id=section_id)
             db.session.add(ebook_section)
-
+        cache.delete('admin_ebooks')
+    
         db.session.commit()
         return jsonify(ebook.id), 200
 
     @app.route('/api/ebooks/<string:id>', methods=['DELETE'])
+    @roles_required('Admin')
     def delete_ebook(id):
         ebook = Ebook.query.get_or_404(id)
         db.session.delete(ebook)
         db.session.commit()
+        cache.delete('admin_ebooks')
         return '', 204
 
     @app.route('/api/ebooks', methods=['GET'])
+    @roles_required('Admin')
+    @cache.cached(timeout=300, key_prefix='admin_ebooks')
     def get_ebooks():
         ebooks = Ebook.query.all()
         
@@ -903,26 +997,23 @@ def create_view(app,user_datastore:SQLAlchemyUserDatastore,db : SQLAlchemy):
 
     @app.route('/delete_adult_section')
     def delete_adult_section():
-        section_to_delete = Section.query.filter_by(name='adult').first()
+        section_to_delete = Section.query.filter_by(name='adultery').first()
         
         if section_to_delete:
-            # Get the section ID
+       
             section_id = section_to_delete.id
-            
-            # Step 2: Delete from EbookSection where section_id matches
+          
             db.session.query(EbookSection).filter_by(section_id=section_id).delete(synchronize_session=False)
             
-            # Step 3: Delete from Ebook where associated with the section_id
-            # First, find all ebooks associated with this section
+            
             ebooks_to_delete = db.session.query(Ebook).join(EbookSection).filter(EbookSection.section_id == section_id).all()
             
             for ebook in ebooks_to_delete:
                 db.session.delete(ebook)
             
-            # Step 4: Delete from Section
+          
             db.session.delete(section_to_delete)
-            
-            # Commit the transaction
+         
             db.session.commit()
             
             return "Deleted records from ebook, ebooksection, and section where section is 'adult'."

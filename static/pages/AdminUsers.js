@@ -8,7 +8,8 @@ const AdminUsers = {
       sortBy: 'name',
       currentPage: 1,
       itemsPerPage: 5,
-      error: null
+      error: null,
+      token: localStorage.getItem("token")
     };
   },
   components:{
@@ -17,13 +18,17 @@ const AdminUsers = {
   computed: {
     filteredUsers() {
       console.log(this.users);
-      const searchQueryLower = (this.searchQuery!="" ? this.searchQuery.toLowerCase() : "");
-      return this.users.filter(user =>
+      const searchQueryLower = (this.searchQuery !== "" ? this.searchQuery.toLowerCase() : "");
+      console.log(searchQueryLower);
+      
+      return this.users.filter(user => {
+        const nameMatch = user.name ? user.name.toLowerCase().includes(searchQueryLower) : false;
+        const usernameMatch = user.username ? user.username.toLowerCase().includes(searchQueryLower) : false;
         
-        (user.name ? user.name.toLowerCase().includes(searchQueryLower): user.username.toLowerCase().includes(searchQueryLower))
-      );
-
-    },
+        return nameMatch || usernameMatch;
+      });
+    }
+,    
     sortedUsers() {
       console.log(this.filteredUsers);
       return this.filteredUsers.sort((a, b) => {
@@ -51,7 +56,13 @@ const AdminUsers = {
   methods: {
     async fetchUsers() {
       try {
-        const response = await fetch('/api/users');
+        const response = await fetch('/api/users', {
+          method: 'GET',
+          headers: {
+            'Authentication-Token': this.token,
+            'Content-Type': 'application/json'
+          }
+        });
         this.users = await response.json();
       } catch (error) {
         console.error('Error fetching users:', error);
@@ -60,7 +71,10 @@ const AdminUsers = {
     },
     async deleteUser(userId) {
       try {
-        await fetch(`/api/users/${userId}`, { method: 'DELETE' });
+        await fetch(`/api/users/${userId}`, { method: 'DELETE' ,headers: {
+          
+          'Authentication-Token': this.token,
+        },});
         this.users = this.users.filter(user => user.id !== userId);
       } catch (error) {
         console.error('Error deleting user:', error);
@@ -102,7 +116,6 @@ const AdminUsers = {
       <center>
       <p class="section-title" style="margin:10px; color: #3c2a1a;">View users and delete user profiles.</p> </center>
 
-      <!-- Search Bar -->
       <div class="search-bar">
         <input v-model="searchQuery" placeholder="Search by name or username" />
         <button @click="handleSearch" class="search-button">Search</button>
@@ -113,7 +126,6 @@ const AdminUsers = {
           <p>No Such Users</p>
         </div>
 
-      <!-- Filter Bar -->
       <div class="filter-bar">
         <label for="sort">Sort by:</label>
         <select v-model="sortBy" id="sort">
@@ -123,7 +135,7 @@ const AdminUsers = {
         </select>
       </div>
 
-      <!-- Users Table -->
+    
       <table class="books-table">
         <thead style = "color: white;">
           <tr >
@@ -147,7 +159,7 @@ const AdminUsers = {
         </tbody>
       </table>
 
-      <!-- Pagination Controls -->
+    
       <div class="pagination-controls">
       <center>
         <button @click="previousPage" :disabled="currentPage === 1">Previous</button>
@@ -158,7 +170,7 @@ const AdminUsers = {
       </center>
       </div>
 
-      <!-- Error Handling -->
+    
       <p v-if="error" class="error">{{ error }}</p>
     </div>
     </div>

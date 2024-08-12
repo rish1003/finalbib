@@ -3,6 +3,7 @@ import Navbar from "../components/Navbar.js";
 const ReaderProfile = {
   data() {
     return {
+      token: localStorage.getItem("token"),
       user: {
         id: '',
         user: '',
@@ -10,7 +11,9 @@ const ReaderProfile = {
         email: '',
         active: true,
         roles: [],
-        password: ''
+        password: '',
+        chart:null,
+        barchart:null
       },
       borrowedBooks: [],
       stats: {
@@ -29,7 +32,11 @@ const ReaderProfile = {
   methods: {
     fetchUserProfile() {
       const userId = localStorage.getItem('id');
-      fetch(`/profile/${userId}`)
+      fetch(`/profile/${userId}`,{
+        headers :{
+          'Authentication-Token' : this.token 
+        }
+      })
         .then(response => response.json())
         .then(data => {
           if (data.error) {
@@ -61,7 +68,8 @@ const ReaderProfile = {
       fetch(`/profile/update`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authentication-Token' : this.token
         },
         body: JSON.stringify(updateData)
       })
@@ -83,8 +91,9 @@ const ReaderProfile = {
       this.editMode = !this.editMode;
     },
     renderCharts() {
+      if (this.chart) this.chart.destroy();
       const ctxPie = document.getElementById('pieChart').getContext('2d');
-      new Chart(ctxPie, {
+      this.chart = new Chart(ctxPie, {
         type: 'pie',
         data: {
           labels: ['Bought', 'Borrowed'],
@@ -98,9 +107,9 @@ const ReaderProfile = {
           responsive: true
         }
       });
-
+      if (this.barchart) this.barchart.destroy();
       const ctxBar = document.getElementById('barChart').getContext('2d');
-      new Chart(ctxBar, {
+      this.barchart =new Chart(ctxBar, {
         type: 'bar',
         data: {
           labels: this.stats.monthlyData.map(item => item.month),

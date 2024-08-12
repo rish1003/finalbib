@@ -1,6 +1,7 @@
 import Modal from "../components/Modal.js";
 import PdfReader from "../components/EbookViewer.js";
 import Navbar from "../components/Navbar.js";
+import PaymentDialog from "../components/PaymentPortal.js";
 
 const EbookDetails = {
   props: {
@@ -9,6 +10,7 @@ const EbookDetails = {
   },
   data() {
     return {
+      token: localStorage.getItem('token'),
       showPdfReader: false,
       ebook: null,
       reviews: [],
@@ -23,7 +25,8 @@ const EbookDetails = {
       selectedRating: 0,
       maxCount: 0,
       isModalVisible: false,
-      pdfUrl: ''
+      pdfUrl: '',
+      isPaymentDialogVisible : null
    
     };
   },
@@ -31,6 +34,7 @@ const EbookDetails = {
     Navbar,
     PdfReader,
     Modal,
+    PaymentDialog
   },
   methods: {
     setRating(star) {
@@ -40,7 +44,11 @@ const EbookDetails = {
     fetchBookDetails() {
       const userId = localStorage.getItem('id');
       
-      fetch(`/fetch/ebook/${this.id}?user_id=${userId}`)
+      fetch(`/fetch/ebook/${this.id}?user_id=${userId}`,{
+        headers :{
+          'Authentication-Token' : this.token 
+        }
+      })
         .then(response => response.json())
         .then(data => {
           this.ebook = data;
@@ -58,7 +66,8 @@ const EbookDetails = {
       fetch(`/return_book`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authentication-Token' : this.token
         },
         body: JSON.stringify({ ebook_id: this.id, user_id: userId })
       })
@@ -104,6 +113,7 @@ const EbookDetails = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
+          , 'Authentication-Token' : this.token
         },
         body: JSON.stringify({ ebook_id: this.id, user_id: userId, rating: rating, comment: comment })
       })
@@ -139,7 +149,8 @@ const EbookDetails = {
       fetch(`/request_borrow`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authentication-Token' : this.token
         },
         body: JSON.stringify({ ebook_id: this.id, user_id: userId })
       })
@@ -155,7 +166,42 @@ const EbookDetails = {
         .catch(error => {
           console.error('Error requesting to borrow the book:', error);
         });
+    },
+    openPaymentDialog() {
+      $('#paymentModal').modal('show');
+      this.isPaymentDialogVisible = true;
+      
+    },
+  
+    handlePaymentConfirmed() {
+      fetch(`/complete_payment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authentication-Token': this.token
+        },
+        body: JSON.stringify({ ebook_id: this.id ,user_id : localStorage.getItem("id")})
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            this.ebook.bought = true;
+            this.ebook.issued = false;
+            this.ebook.return = false;
+            alert('Payment successful! Your book has been purchased.');
+            this.fetchBookDetails(); 
+            this.isPaymentDialogVisible = false; 
+            
+          } else {
+            alert('Payment failed: ' + data.message);
+          }
+        })
+        .catch(error => {
+          console.error('Error completing payment:', error);
+          alert('Payment failed. Please try again later.');
+        });
     }
+  
   
   },
   computed: {
@@ -200,6 +246,12 @@ const EbookDetails = {
         @close="isModalVisible = false"
       >
         <pdf-reader :pdfUrl="pdfUrl"></pdf-reader> </modal>
+        <payment-dialog 
+                :visible="isPaymentDialogVisible" 
+                :bookName="ebook?.name"
+                @paymentConfirmed="handlePaymentConfirmed"
+                @close="isPaymentDialogVisible = false"
+              />
               <div class="details-button-container">
                 <button v-if="ebook?.status" class="details-action-button" @click="handleReturnBook">Return Book</button>
                 <a v-if="ebook?.status || ebook?.bought" class="details-action-button" @click="readBook"> Read</a>
@@ -207,7 +259,7 @@ const EbookDetails = {
                 <button v-if="ebook.issued && !ebook.status && !ebook.bought && !ebook.return" class="details-action-button">Request Sent</button>
                 <a v-if="ebook?.bought" class="details-action-button" :href="'static/media/uploads/books/' + ebook.bookurl" download> Download</a>
 
-                <button v-if="!ebook?.bought" class="details-action-button">Buy</button>
+                <button v-if="!ebook?.bought" class="details-action-button" @click="openPaymentDialog">Buy Now</button>
               </div>
             </div>
           </div>

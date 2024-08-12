@@ -1,4 +1,3 @@
-
 import Navbar from "../components/Navbar.js";
 import Reader from "./Reader.js";
 import Admin from "./Admin.js";
@@ -12,17 +11,57 @@ const Home = {
   `,
   data() {
     return {
-      currentView: ''
+      currentView: '',
+      token: localStorage.getItem('token') || ''
     };
   },
   created() {
-    const roles = localStorage.getItem('role') ? localStorage.getItem('role').split(',') : [];
-    if (roles.includes('Admin')) {
-      this.currentView = 'Admin';
-    } else if (roles.includes('Reader')) {
-      this.currentView = 'Reader';
-    } else {
-      this.currentView = 'LandingPage';
+    this.checkAuth();
+  },
+  methods: {
+    async checkAuth() {
+      if (this.token) {
+        try {
+          const response = await fetch('/api/check_token_and_login', {
+            method: 'GET',
+            headers: {
+              'Authentication-Token':this.token,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            const roles = data.roles;
+
+            if (roles.includes('Admin')) {
+              this.currentView = 'Admin';
+            } else if (roles.includes('Reader')) {
+              this.currentView = 'Reader';
+            } else {
+              this.currentView = 'LandingPage';
+            }
+
+
+            localStorage.setItem('role', roles.join(','));
+
+          } else {
+            alert("User NOT authorized");
+            this.currentView = 'LandingPage';
+            localStorage.removeItem('token');
+            localStorage.removeItem('role');
+          }
+
+        } catch (error) {
+          alert("User NOT authorized");
+          console.error('Error checking token and login:', error);
+          this.currentView = 'LandingPage';
+        }
+      } else {
+        
+        this.currentView = 'LandingPage';
+        
+      }
     }
   },
   components: {

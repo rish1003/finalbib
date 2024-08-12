@@ -4,6 +4,7 @@ const AdminManagement = {
   data() {
     return {
       sections: [],
+      token: localStorage.getItem("token"),
       isLoading: true,
       ebooks: [],
       newSection: { name: "", description: "" },
@@ -20,16 +21,17 @@ const AdminManagement = {
         file: null,
       },
       editSection: {
+        id :  null,
         name: null
       },
       editEbook: null,
       error: null,
-      searchQuerySections: "", // Search query for sections
-      searchQueryEbooks: "", // Search query for eBooks
-      filterSection: "", // Filter for eBooks by section
-      filterBy: "all", // Filter for eBooks
-      sortBySections: "custom", // Sort by sections
-      sortByEbooks: "name", // Sort by eBooks
+      searchQuerySections: "",
+      searchQueryEbooks: "", 
+      filterSection: "", 
+      filterBy: "all", 
+      sortBySections: "custom", 
+      sortByEbooks: "name", 
       currentPageSections: 1,
       currentPageEbooks: 1,
       itemsPerPage: 5,
@@ -45,7 +47,13 @@ const AdminManagement = {
   methods: {
     async fetchSections() {
       try {
-        const response = await fetch("/api/sections");
+        const response = await fetch("/api/sections", {
+          method: 'GET',
+          headers: {
+            'Authentication-Token': this.token,
+            'Content-Type': 'application/json'
+          }
+        });
         this.sections = await response.json();
       } catch (error) {
         console.error("Error fetching sections:", error);
@@ -54,9 +62,15 @@ const AdminManagement = {
     },
     async fetchEbooks() {
       try {
-        const response = await fetch("/api/ebooks");
+        const response = await fetch("/api/ebooks", {
+          method: 'GET',
+          headers: {
+            'Authentication-Token': this.token,
+            'Content-Type': 'application/json'
+          }
+        });
         const ebooks = await response.json();
-        console.log("Fetched eBooks:", ebooks); // Check fetched eBooks
+        console.log("Fetched eBooks:", ebooks); 
         this.ebooks = ebooks;
         this.isLoading = false;
       } catch (error) {
@@ -71,13 +85,16 @@ const AdminManagement = {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            'Authentication-Token': this.token,
+            
           },
           body: JSON.stringify(this.editSection),
         });
         const newSectionId = await response.json();
-        this.sections.push({ ...this.editSection, id: editSectionId });
+        
         this.editSection = { name: ""};
         this.dialogSection = false;
+        this.fetchSections();
         window.location.reload();
       } catch (error) {
         console.error("Error creating section:", error);
@@ -90,6 +107,7 @@ const AdminManagement = {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
+            'Authentication-Token': this.token,
           },
           body: JSON.stringify(this.editSection),
         });
@@ -105,6 +123,10 @@ const AdminManagement = {
       try {
         await fetch(`/api/sections/${sectionId}`, {
           method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            'Authentication-Token': this.token,
+          },
         });
         this.sections = this.sections.filter(section => section.id !== sectionId);
        
@@ -127,10 +149,14 @@ const AdminManagement = {
         });
         const response = await fetch("/api/ebooks", {
           method: "POST",
+          headers: {
+          
+            'Authentication-Token': this.token,
+          },
           body: formData,
         });
         if (response.ok) {
-          await this.fetchEbooks(); // Refresh eBooks list
+          await this.fetchEbooks();
           this.editEbook = {
             id: "",
             name: "",
@@ -167,6 +193,10 @@ const AdminManagement = {
         });
         await fetch(`/api/ebooks/${this.editEbook.id}`, {
           method: "PUT",
+          headers: {
+      
+            'Authentication-Token': this.token,
+          },
           body: formData,
         });
         
@@ -193,6 +223,10 @@ const AdminManagement = {
       try {
         await fetch(`/api/ebooks/${ebookId}`, {
           method: "DELETE",
+          headers: {
+          
+            'Authentication-Token': this.token,
+          },
         });
         this.ebooks = this.ebooks.filter(ebook => ebook.id !== ebookId);
        
@@ -417,7 +451,6 @@ const AdminManagement = {
         </div>
       </div>
 
-      <!-- Section Dialog -->
       <div v-if="dialogSection" class="dialog">
         <h2>{{ editModeSection ? "Edit Section" : "Create Section" }}</h2>
         <label>Name:
@@ -431,7 +464,7 @@ const AdminManagement = {
         <p v-if="error" class="error">{{ error }}</p>
       </div>
 
-      <!-- eBook Dialog -->
+
       <div v-if="dialogEbook" class="dialog">
         <h2>{{ editModeEbook ? "Edit eBook" : "Create eBook" }}</h2>
         <label>Name:

@@ -8,7 +8,8 @@ const AdminRequests = {
       error: null,
       requestedBooksPage: 1,
       borrowedBooksPage: 1,
-      itemsPerPage: 5
+      itemsPerPage: 5,
+      token: localStorage.getItem("token")
     };
   },
   components: {
@@ -17,7 +18,13 @@ const AdminRequests = {
   methods: {
     async fetchRequestedBooks() {
       try {
-        const response = await fetch('/api/ebooks/requests');
+        const response = await fetch('/api/ebooks/requests', {
+          method: 'GET',
+          headers: {
+            'Authentication-Token': this.token,
+            'Content-Type': 'application/json'
+          }
+        });
         this.requestedBooks = await response.json();
       } catch (error) {
         console.error('Error fetching requested books:', error);
@@ -26,7 +33,13 @@ const AdminRequests = {
     },
     async fetchBorrowedBooks() {
       try {
-        const response = await fetch('/api/ebooks/borrowed');
+        const response = await fetch('/api/ebooks/borrowed', {
+          method: 'GET',
+          headers: {
+            'Authentication-Token': this.token,
+            'Content-Type': 'application/json'
+          }
+        });
         this.borrowedBooks = await response.json();
       } catch (error) {
         console.error('Error fetching borrowed books:', error);
@@ -35,8 +48,12 @@ const AdminRequests = {
     },
     async approveRequest(bookId) {
       try {
-        await fetch(`/api/ebooks/requests/${bookId}`, { method: 'PUT', body: JSON.stringify({ status: true }) });
-        this.fetchRequestedBooks(); // Refresh the list after approving
+        await fetch(`/api/ebooks/requests/${bookId}`, { method: 'PUT', headers: {
+          
+          'Authentication-Token': this.token,
+        },body: JSON.stringify({ status: true }) });
+        this.fetchRequestedBooks();  
+        window.location.reload();
       } catch (error) {
         console.error('Error approving request:', error);
         this.error = 'Failed to approve request. Please try again later.';
@@ -44,8 +61,13 @@ const AdminRequests = {
     },
     async denyRequest(bookId) {
       try {
-        await fetch(`/api/ebooks/requests/${bookId}`, { method: 'DELETE' });
-        this.fetchRequestedBooks(); // Refresh the list after denying
+        await fetch(`/api/ebooks/requests/${bookId}`, { method: 'DELETE', headers: {
+          
+          'Authentication-Token': this.token,
+        },});
+        
+        this.fetchRequestedBooks(); 
+        window.location.reload();
       } catch (error) {
         console.error('Error denying request:', error);
         this.error = 'Failed to deny request. Please try again later.';
@@ -53,8 +75,12 @@ const AdminRequests = {
     },
     async revokeBorrow(bookId) {
       try {
-        await fetch(`/api/ebooks/borrowed/${bookId}`, { method: 'PUT', body: JSON.stringify({ status: false, returned: true }) });
-        this.fetchBorrowedBooks(); // Refresh the list after revoking
+        await fetch(`/api/ebooks/borrowed/${bookId}`, { method: 'PUT', headers: {
+          
+          'Authentication-Token': this.token,
+        },body: JSON.stringify({ status: false, returned: true }) });
+        this.fetchBorrowedBooks(); 
+        window.location.reload();
       } catch (error) {
         console.error('Error revoking borrow:', error);
         this.error = 'Failed to revoke borrow. Please try again later.';
@@ -90,7 +116,7 @@ const AdminRequests = {
           <p class="section-title" style="margin:10px; color: #3c2a1a;">Manage book requests and currently borrowed books.</p>
         </center>
 
-        <!-- Error Handling -->
+       
         <p v-if="error" class="error">{{ error }}</p>
 
         <!-- Requested Books Section -->

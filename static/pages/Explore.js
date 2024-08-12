@@ -102,12 +102,12 @@ Discovering and acquiring your next favorite book is a seamless experience with 
           author: 'Author 2',
           coverImage: 'static/media/lp_bg.jpg'
         },
-        // Add more eBook objects as needed
+       
       ]
     };
   },
   methods: {
-    // ... other methods if needed
+    
   },
 
 };

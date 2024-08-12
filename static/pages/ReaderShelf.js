@@ -7,15 +7,24 @@ const ReaderShelf = {
       borrowedBooks: [],
       boughtBooks: [],
       isLoading: true,
-      error: null
+      error: null,
+      token: localStorage.getItem('token')
     };
   },
   methods: {
     fetchUserBooks() {
       const userId = localStorage.getItem('id');
       Promise.all([
-        fetch(`/fetch/borrowed_books/${userId}`).then(response => response.json()),
-        fetch(`/fetch/bought_books/${userId}`).then(response => response.json())
+        fetch(`/fetch/borrowed_books/${userId}`, {
+          headers: {
+            'Authentication-Token': this.token
+          }
+        }).then(response => response.json()),
+        fetch(`/fetch/bought_books/${userId}`, {
+          headers: {
+            'Authentication-Token': this.token
+          }
+        }).then(response => response.json())
       ])
       .then(([borrowedData, boughtData]) => {
         this.borrowedBooks = borrowedData.books;
@@ -42,26 +51,26 @@ const ReaderShelf = {
         <div class="intro-section">
           <div class="intro-content">
             <h1 class="dashboard-title"><b>Reader Shelf</b></h1>
-            <p class="welcome-text">All your borrowed/bought books in one place!.</p>
+            <p class="welcome-text">All your borrowed/bought books in one place!</p>
           </div>
         </div>
         <center>
-            <div v-if="isLoading" class="loading">
-                <div class="spinner">
-                    <div></div>
-                    <div></div>
-                    <div></div>
-                    <div></div>
-                    <div></div>
-                    <div></div>
-                </div>
+          <div v-if="isLoading" class="loading">
+            <div class="spinner">
+              <div></div>
+              <div></div>
+              <div></div>
+              <div></div>
+              <div></div>
+              <div></div>
             </div>
+          </div>
         </center>
         <div v-if="error" class="error">{{ error }}</div>
-        
+
         <div v-if="!isLoading && borrowedBooks.length">
           <h2 class="section-title">Borrowed Books</h2>
-          <div class="category-section">
+          <div class="book-list">
             <EbookCard
               v-for="book in borrowedBooks"
               :key="book.id"
@@ -78,7 +87,7 @@ const ReaderShelf = {
 
         <div v-if="!isLoading && boughtBooks.length">
           <h2 class="section-title">Bought Books</h2>
-          <div class="category-section">
+          <div class="book-list">
             <EbookCard
               v-for="book in boughtBooks"
               :key="book.id"
@@ -94,7 +103,7 @@ const ReaderShelf = {
         </div>
 
         <div v-if="!isLoading && !borrowedBooks.length && !boughtBooks.length">
-         <center> <p class="shelf-text">No books found in your shelf! Browse our collection to find your fit!</p> </center>
+          <center><p class="shelf-text">No books found in your shelf! Browse our collection to find your fit!</p></center>
         </div>
       </div>
     </div>

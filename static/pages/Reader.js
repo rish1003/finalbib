@@ -9,7 +9,8 @@ const Reader = {
       isLoading: true,
       error: null,
       searchQuery: '',
-      searchType: 'both'
+      searchType: 'both',
+      token: localStorage.getItem('token')
     };
   },
   methods: {
@@ -17,7 +18,11 @@ const Reader = {
       this.$set(this.expandedCategories, category, !this.expandedCategories[category]);
     },
     fetchBooks() {
-      fetch('/fetch/books')
+      fetch('/fetch/books',{
+        headers :{
+          'Authentication-Token' : this.token 
+        }
+      })
         .then(response => response.json())
         .then(data => {
           this.booksByCategory = data;
@@ -39,12 +44,11 @@ const Reader = {
       let viewedBooks = JSON.parse(localStorage.getItem('viewedBooks')) || [];
       console.log(viewedBooks);
   
-      // Add the new book ID to the list
+  
       if (!viewedBooks.includes(ebookId)) {
-        viewedBooks.unshift(ebookId); // Add to the beginning of the list
-        // Ensure the list doesn't exceed 10 items
+        viewedBooks.unshift(ebookId); 
         if (viewedBooks.length > 10) {
-          viewedBooks.pop(); // Remove the oldest item
+          viewedBooks.pop(); 
         }
         localStorage.setItem('viewedBooks', JSON.stringify(viewedBooks));
       }
